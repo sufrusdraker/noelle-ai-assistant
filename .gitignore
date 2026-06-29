@@ -1,0 +1,45 @@
+# ==========================================
+# IDEs e Editores de Código
+# ==========================================
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# ==========================================
+# Ambientes Virtuais e Dependências Locais
+# ==========================================
+venv/
+.venv/
+env/
+ENV/
+lib/
+lib64/
+
+# ==========================================
+# Caches e Arquivos Temporários do Python
+# ==========================================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+
+# ==========================================
+# Backups Pessoais e Históricos Locais
+# ==========================================
+locais/
+*memoria.json
+*.json
+
+# ==========================================
+# Arquivos de Sistema e Outputs de Mídia
+# ==========================================
+output.png
+step_*.png
+.DS_Store
+Thumbs.db
