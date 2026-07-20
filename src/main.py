@@ -1,21 +1,42 @@
 import os
-from gpt4all import GPT4All
+import sys
 import re
-from src import pintora
+from pathlib import Path
+from gpt4all import GPT4All
 from diffusers import AutoPipelineForText2Image
+from src import pintora
 
-current_dir = os.path.dirname(os.path.abspath(__file__))
-persona_path = os.path.join(current_dir, "persona.txt")
-comandos_path = os.path.join(current_dir, "comandos.txt")
+# 1. Diretórios dinâmicos do Projeto
+CURRENT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = CURRENT_DIR.parent if CURRENT_DIR.name == "locais" else CURRENT_DIR
 
+# Busca persona.txt e comandos.txt na raiz do projeto (ou no mesmo diretório)
+persona_path = PROJECT_ROOT / "persona.txt"
+comandos_path = PROJECT_ROOT / "comandos.txt"
 
-# Configuração de caminho
-model_path = "C:/Users/joaot/.cache/gpt4all/Meta-Llama-3-8B-Instruct.Q4_0.gguf"
-gpt4all = GPT4All(model_path, device="cpu", n_threads=8, allow_download=False)
-pipe = AutoPipelineForText2Image.from_pretrained("stabilityai/sdxl-turbo")
-pipe.to("cpu")
+# 2. Caminho dinâmico para a pasta do GPT4All na HOME de qualquer usuário
+# No Windows resolve para: C:\Users\<usuario_atual>\.cache\gpt4all\...
+MODEL_NAME = "Meta-Llama-3-8B-Instruct.Q4_0.gguf"
+USER_HOME = Path.home()
+model_path = USER_HOME / ".cache" / "gpt4all" / MODEL_NAME
+
+# Se preferir usar variáveis de ambiente (útil para quem quer mudar a pasta do modelo):
+# model_path = os.getenv("GPT4ALL_MODEL_PATH", USER_HOME / ".cache" / "gpt4all" / MODEL_NAME)
+
+# Inicialização do GPT4All com suporte a download caso o modelo não exista
+gpt4all = GPT4All(MODEL_NAME, device="cpu", n_threads=8, allow_download=True)
 
 print(f"Threads ativas: {gpt4all.model.thread_count()}")
+
+pipe = None
+
+def obter_pipe():
+    global pipe
+    if pipe is None:
+        print("\n[Sistema] Carregando SDXL-turbo para a memória RAM...")
+        pipe = AutoPipelineForText2Image.from_pretrained("stabilityai/sdxl-turbo")
+        pipe.to("cpu")
+    return pipe
 
 
 def carregar_txt(path):
@@ -26,9 +47,6 @@ def carregar_txt(path):
 
 
 def gerar_resposta(user_input):
-    if not os.path.exists(model_path):
-        return "Erro: Modelo não encontrado."
-
     personality = carregar_txt(persona_path)
     comandos = carregar_txt(comandos_path)
 
@@ -40,23 +58,26 @@ def gerar_resposta(user_input):
     # Dicionário para armazenar o estado dentro do callback
     contexto = {"primeiro_token": True, "texto_completo": ""}
 
-
-    # Esta função será chamada para CADA token gerado pelo modelo
     def resposta_callback(token_id, token_string):
         if contexto["primeiro_token"]:
             print(" " * 30, end="\r")
             print("NoellE: ", end="", flush=True)
             contexto["primeiro_token"] = False
 
-        # Se o modelo tentar pular linha, paramos imediatamente de forma segura
+        # Se o token contiver quebra de linha:
         if "\n" in token_string:
+            token_limpo = token_string.replace("\n", "")
+
+            if token_limpo:
+                contexto["texto_completo"] += token_limpo
+                print(token_limpo, end="", flush=True)
+
             return False
 
         contexto["texto_completo"] += token_string
         print(token_string, end="", flush=True)
-        return True  # Diz ao modelo para continuar gerando
+        return True
 
-    # CORREÇÃO: Chamada direta do gpt4all.generate com o seu callback
     gpt4all.generate(
         prompt,
         callback=resposta_callback,
@@ -66,15 +87,16 @@ def gerar_resposta(user_input):
         temp=0.7
     )
 
-    print()  # Pula a linha no terminal assim que o callback para o modelo
+    print()
     return contexto["texto_completo"].strip()
 
 
 def comandos(resposta):
     for match in re.finditer(r'(/\w+)\s+"([^"]+)"', resposta):
-        comandos, argumento = match.group(1), match.group(2)
-        if "/image" in comandos:
-            pintora.criar_imagem(pipe, argumento)
+        cmd, argumento = match.group(1), match.group(2)
+        if "/image" in cmd:
+            pipeline = obter_pipe()
+            pintora.criar_imagem(pipeline, argumento)
 
 if __name__ == "__main__":
     while True:
